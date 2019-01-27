@@ -1,0 +1,149 @@
+---
+title: "Projekt - Zaawansowany R"
+author: "Tomasz Koc"
+date: "20 stycznia 2019"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+## plan działania
+```{r, echo = F, warning=F, message=F}
+library(leaflet)
+library(dplyr)
+library(xml2)
+library(rdrop2)
+library(ggplot2)
+library(rvest)
+
+l = list.files(pattern="*.csv")
+d <- do.call("rbind", lapply( l, read.csv, header=TRUE))
+colnames(d) = c("blad", "miasto", "plec", "majonez")
+dd=d %>%
+  filter(blad<150) %>%
+  select(miasto, blad) %>%
+  group_by(miasto)%>%
+  summarise(mean(blad))
+ddd=d %>%
+  filter(blad<150) %>%
+  select(majonez, blad) %>%
+  group_by(majonez)%>%
+  summarise(mean(blad))
+
+
+
+
+
+
+```
+inspiracja - blog.prokulski.science
+
+1. webscraping z `rvest`
+2. rysowanie mapy z `leaflet`
+3. zapisywanie danych na dropboxie z `rdrop2`
+4. zebranie wyników
+5. wizualizacja danych i kilka ciekawych zależności
+
+## webscraping z rvest
+```{r eval = TRUE, echo = TRUE}
+
+dane = read_html("https://pl.wikipedia.org/wiki/Warszawa")
+dane %>%
+  html_node(".longitude") %>%
+  html_text()
+
+```
+Jednym z pakietów służących do webscrapingu jest `rvest`
+Odpowiedni element strony (`html_node()`) można łatwo znaleźć za pomocą narzędzia *selctor gadget* (dodatek do Chrome)
+
+
+## leaflet
+```{r eval = TRUE, echo = TRUE}
+m = leaflet(width = 300, height = 300) %>%
+   addProviderTiles(providers$Esri.WorldGrayCanvas) %>% #mapa
+   setView(lng = 19.15, lat = 52.19, zoom = 4) %>% #ustalanie widoku
+   addMarkers(lng = 19.15, lat = 52.19) #dodawanie pinezek
+  
+m
+  
+```
+
+## zapisywanie danych w dropboxie
+- za pomocą pakietu `rdrop2`
+- należy wywołać funkcję `drop_auth()` i zapisać token
+- plik `.httr-oauth` trzeba wrzucić do folderu z projektem
+- dzięki temu po zapisaniu odpowiedzi na shinyapps dane trafiają do mnie
+
+## zapisywanie danych w dropboxie
+```{r echo=T, eval = F}
+#funkcja zapisu
+  zapiszDane <- function(x,y,z, t) {
+    data <- cbind(x,y,z, t)
+    #stworzenie unikalnej nazwy
+    fileName <- sprintf("%s_%s.csv", as.integer(Sys.time()), digest::digest(data))
+    #tymczasowe zapisanie pliku na serwerze shinyapps
+    filePath <- file.path(tempdir(), fileName)
+    write.csv(data, filePath, row.names = FALSE, quote = TRUE)
+    #załadowanie do dropboxa
+    drop_upload(filePath, path = outputDir)
+```
+- nadaję unikalną nazwę - w miejsce `%s` funkcja `sprintf` wrzuca czas i funkcję haszującą
+- za pomocą `tempdir()` zapisuję ścieżkę do tymczasowego folderu (w shinyapps) w którym znajdą się dane
+- za pomocą `drop_upload` wrzucam plik na dropboxa do folderu zdefinowanego zmienną `outputDir`
+
+## zebranie wyników
+- wynikiem zapisu był pojedynczy plik csv, tak więc zebrałem prawie 200 obserwacji (i plików)
+```{r, echo = T, eval = F}
+lista = list.files(pattern="*.csv")
+dane <- do.call("rbind", lapply( lista, read.csv, header=TRUE))
+```
+w ten sposób za pomocą `lapply` każdy element listy (plik) otwierałem poleceniem `read.csv` a następnie funkcją `do.call` łączyłem wierszami
+
+##przetwarzanie i wizualizacja danych
+Za pomocą pakietów `dplyr` i `ggplot2`
+
+A teraz klika ciekawych wykresów:
+
+## Które miasto najtrudniej wskazać na mapie
+```{r}
+ggplot(dd, aes(x=miasto, y=`mean(blad)`))+ 
+  geom_col(fill = c("grey50", "grey50", "red", "green", "grey50")) +
+  labs(
+       x = "Miasto",
+       y = "Średni bład odległości") +
+  scale_x_discrete(labels=c("Wrocław", "Szczecin", "Kraków", "Gdańsk", "Warszawa"))
+ 
+```
+
+## Preferencje majonezu względem płci
+```{r}
+ggplot(d, aes(x=majonez, fill=plec )) + 
+     geom_bar(position = "fill") +
+     labs(
+                   x = "majonez",
+                   y = "") +
+     theme(axis.text.y = element_blank()) +
+     scale_x_discrete(labels=c("kie" = "Kielecki", "win" = "Winiary",
+                               "inn" = "inny", "nie" = "nie jem")) +
+     scale_fill_discrete(labels=c("m"="mężczyźni", "k" = "kobiety"),
+                          name = "płeć")
+```
+
+
+## Spożywany majonez a umiejętność wskazania Polski na mapie
+```{r}
+ggplot(ddd, aes(x=majonez, y=`mean(blad)`))+ 
+  geom_col(fill = c("grey50", "red", "grey50", "green")) +
+  labs(
+       x = "Majonez",
+       y = "Średni bład odległości") +
+  scale_x_discrete(labels=c("Kielecki", "Winiary", "inny", "nie jem")) +
+  coord_flip()
+```
+
+## wnioski
+- zrobić projekt - to jedno, wrzucić do internetu - to drugie (i znacznie bardziej problematyczne)
+- nie ma niepotrzebnych danych - to my nie potrafimy ich wykorzystać
+- Winiary to najpopularniejszy majonez
+
